@@ -1,0 +1,12 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "test",
+            "group": "test",
+            "command": "mvn --quiet clean test > ${workspaceFolder}/cw-model/errors.txt",
+            "type": "shell",
+            "isBackground": true
+        }
+    ]
+}

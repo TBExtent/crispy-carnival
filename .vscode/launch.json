@@ -5,7 +5,8 @@
             "name": "CodeLens (Launch) - Main",
             "request": "launch",
             "mainClass": "uk.ac.bris.cs.scotlandyard.Main",
-            "projectName": "cw-model"
+            "projectName": "cw-model",
+            //"preLaunchTask": "test"
         }
     ]
 }

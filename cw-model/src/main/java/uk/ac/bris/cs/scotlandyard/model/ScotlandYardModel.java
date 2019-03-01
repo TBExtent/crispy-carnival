@@ -10,10 +10,25 @@ import uk.ac.bris.cs.gamekit.graph.Graph;
 // TODO implement all methods and pass all tests
 public class ScotlandYardModel implements ScotlandYardGame {
 
+	private List<Boolean> rounds;
+
+	private Graph<Integer, Transport> graph;
+
+	private PlayerConfiguration mrX;
+
+	private PlayerConfiguration firstDetective;
+
+	private PlayerConfiguration[] restOfTheDetectives;
+
 	public ScotlandYardModel(List<Boolean> rounds, Graph<Integer, Transport> graph,
 			PlayerConfiguration mrX, PlayerConfiguration firstDetective,
 			PlayerConfiguration... restOfTheDetectives) {
-		// TODO
+		
+		this.rounds = rounds;
+		this.graph = graph;
+		this.mrX = mrX;
+		this.firstDetective = firstDetective;
+		this.restOfTheDetectives = restOfTheDetectives;
 	}
 
 	@Override
