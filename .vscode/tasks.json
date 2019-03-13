@@ -4,7 +4,7 @@
         {
             "label": "test",
             "group": "test",
-            "command": "mvn --quiet clean test > ${workspaceFolder}/cw-model/errors.txt",
+            "command": "mvn -f ${workspaceFolder}/cw-model --quiet clean test > ${workspaceFolder}/cw-model/errors.txt",
             "type": "shell",
             "isBackground": true
         }

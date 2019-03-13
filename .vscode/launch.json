@@ -6,7 +6,7 @@
             "request": "launch",
             "mainClass": "uk.ac.bris.cs.scotlandyard.Main",
             "projectName": "cw-model",
-            //"preLaunchTask": "test"
+            "preLaunchTask": "test"
         }
     ]
 }
