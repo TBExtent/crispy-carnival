@@ -453,3 +453,5 @@ fabric.properties
 !repo/**
 
 errors.txt
+
+settings.json
