@@ -5,13 +5,16 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Map;
 
 import com.sun.javafx.UnmodifiableArrayList;
 
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.ArrayList;
 
 import uk.ac.bris.cs.gamekit.graph.Graph;
+import uk.ac.bris.cs.gamekit.graph.Edge;
 import uk.ac.bris.cs.gamekit.graph.ImmutableGraph;
 
 // TODO implement all methods and pass all tests
@@ -86,8 +89,24 @@ public class ScotlandYardModel implements ScotlandYardGame {
 	
 	@Override
 	public void startRotate() {
-		// TODO
-		throw new RuntimeException("Implement me");
+		currentPlayer = mrX.colour;
+		final Set<Move> moves = GetMoves(mrX.colour, mrX.location, mrX.tickets, true);
+		mrX.player.makeMove(this, mrX.location, moves, (Move move) -> {
+			DoMove(mrX, moves, move);
+		});
+		currentRound++;
+		currentPlayer = firstDetective.colour;
+		final Set<Move> moreMoves = GetMoves(firstDetective.colour, firstDetective.location, firstDetective.tickets, false);
+		firstDetective.player.makeMove(this, firstDetective.location, moreMoves, (Move move) -> {
+			DoMove(firstDetective, moreMoves, move);
+		});
+		for (PlayerConfiguration detective : restOfTheDetectives) {
+			currentPlayer = detective.colour;
+			final Set<Move> evenMoreMoves = GetMoves(detective.colour, detective.location, detective.tickets, false);
+			detective.player.makeMove(this, detective.location, evenMoreMoves, (Move move) -> {
+				DoMove(detective, evenMoreMoves, move);
+			});
+		}
 	}
 	
 	@Override
@@ -202,5 +221,56 @@ public class ScotlandYardModel implements ScotlandYardGame {
 		if (player.tickets.get(Ticket.TAXI) > 0) return false;
 		if (player.tickets.get(Ticket.UNDERGROUND) > 0) return false;
 		return true;
+	}
+
+	private Set<Move> GetMoves(Colour colour, Integer location, Map<Ticket, Integer> tickets, Boolean isMrX) {
+		Set<TicketMove> ticketMoves = GetTicketMoves(colour, location, tickets, isMrX);
+		Set<Move> moves = new HashSet<Move>(ticketMoves);
+		if (tickets.get(Ticket.DOUBLE) > 0) {
+			for (TicketMove ticketMove : ticketMoves) {
+				Map<Ticket, Integer> tempTickets = new HashMap<Ticket, Integer>(tickets);
+				tempTickets.put(ticketMove.ticket(), tickets.get(ticketMove.ticket()) - 1);
+				tempTickets.put(Ticket.DOUBLE, tickets.get(Ticket.DOUBLE) - 1);
+				Integer tempLocation = ticketMove.destination();
+				Set<TicketMove> secondMoves = GetTicketMoves(colour, tempLocation, tempTickets, isMrX);
+				for (TicketMove secondMove : secondMoves) {
+					moves.add(new DoubleMove(colour, ticketMove, secondMove));
+				}
+			}
+		}
+		return moves;
+	}
+	
+	private Set<TicketMove> GetTicketMoves(Colour colour, Integer location, Map<Ticket, Integer> tickets, Boolean isMrX) {
+		Set<TicketMove> ticketMoves = new HashSet<TicketMove>();
+		Collection<Edge<Integer, Transport>> edges = graph.getEdgesFrom(graph.getNode(location));
+		for (Edge<Integer, Transport> edge : edges) {
+			if (tickets.get(Ticket.fromTransport(edge.data())) > 0) {
+				if (!isMrX || ContainsDetective(edge.destination().value())) {
+					ticketMoves.add(new TicketMove(colour, Ticket.fromTransport(edge.data()), edge.destination().value()));
+					if (Ticket.fromTransport(edge.data()) != Ticket.SECRET) {
+						if (tickets.get(Ticket.SECRET) > 0) {
+							ticketMoves.add(new TicketMove(colour, Ticket.SECRET, edge.destination().value()));
+						}
+					}
+				}
+			}
+		}
+		return ticketMoves;
+	}
+
+	private void DoMove(PlayerConfiguration player, Set<Move> moves, Move move) {
+		if (!moves.contains(move)) throw new IllegalArgumentException("Not valid move.");
+	}
+
+	private boolean ContainsDetective(Integer position) {
+		boolean containsDetective = firstDetective.location == position;
+
+		for (PlayerConfiguration detective : restOfTheDetectives) {
+			if (containsDetective) break;
+			containsDetective = detective.location == position;
+		}
+
+		return containsDetective;
 	}
 }
