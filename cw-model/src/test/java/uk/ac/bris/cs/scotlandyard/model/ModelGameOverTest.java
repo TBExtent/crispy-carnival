@@ -65,6 +65,7 @@ public class ModelGameOverTest extends ParameterisedModelTestBase {
 		PlayerConfiguration mrX = harness.newPlayer(BLACK, 86);
 		PlayerConfiguration blue = harness.newPlayer(BLUE, 85);
 
+		System.out.println("double now");
 		harness.play(createGame(rounds(true), mrX, blue))
 				.startRotationAndAssertTheseInteractionsOccurInOrder(
 						player(BLACK).makeMove().willPick(taxi(103)),
