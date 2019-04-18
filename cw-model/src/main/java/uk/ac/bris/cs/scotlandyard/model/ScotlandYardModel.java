@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+
 import java.util.Map;
 
 //import com.sun.javafx.UnmodifiableArrayList;
@@ -12,6 +13,8 @@ import java.util.Map;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.ArrayList;
+
+import java.util.function.Consumer;
 
 import uk.ac.bris.cs.gamekit.graph.Graph;
 import uk.ac.bris.cs.gamekit.graph.Edge;
@@ -35,6 +38,8 @@ public class ScotlandYardModel implements ScotlandYardGame {
 	private Colour currentPlayer;
 
 	private Integer mrXLocation;
+
+	private Integer mrXLastLocation;
 	
 	private Integer firstDetectiveLocation;
 	
@@ -46,7 +51,11 @@ public class ScotlandYardModel implements ScotlandYardGame {
 
 	private ArrayList<HashMap<Ticket, Integer>> restOfTheDetectivesTickets;
 
-	private Boolean roundHasNotYetFinishedYouStreakOfPiss = false;
+	private ArrayList<Spectator> spectators;
+
+	private CallbackVisit callbackVisit;
+
+	private HashSet<Colour> winningPlayers;
 
 	public ScotlandYardModel(List<Boolean> rounds, Graph<Integer, Transport> graph,
 			PlayerConfiguration mrX, PlayerConfiguration firstDetective,
@@ -61,6 +70,7 @@ public class ScotlandYardModel implements ScotlandYardGame {
 		currentPlayer = mrX.colour;
 
 		mrXLocation = mrX.location;
+		mrXLastLocation = 0;
 		mrXTickets = new HashMap<Ticket, Integer>(mrX.tickets);
 		firstDetectiveLocation = firstDetective.location;
 		firstDetectiveTickets = new HashMap<Ticket, Integer>(firstDetective.tickets);
@@ -70,6 +80,11 @@ public class ScotlandYardModel implements ScotlandYardGame {
 			restOfTheDetectivesLocations[i] = restOfTheDetectives[i].location;
 			restOfTheDetectivesTickets.add(new HashMap<Ticket, Integer>(restOfTheDetectives[i].tickets));
 		}
+
+		spectators = new ArrayList<Spectator>();
+		winningPlayers = new HashSet<Colour>();
+
+		callbackVisit = new CallbackVisit();
 		
 		if (rounds == null) throw new NullPointerException("Rounds is null.");
 		if (graph == null) throw new NullPointerException("Graph is null.");
@@ -98,51 +113,273 @@ public class ScotlandYardModel implements ScotlandYardGame {
 			}
 		}
 		
+		if (AllDetectivesStuck()) winningPlayers.add(mrX.colour);
 	}
 	
 	@Override
 	public void registerSpectator(Spectator spectator) {
-		// TODO
-		throw new RuntimeException("Implement me");
+		if (spectator == null) throw new NullPointerException("Spectator is null.");
+		if (spectators.contains(spectator)) throw new IllegalArgumentException("Spectator already exists.");
+		spectators.add(spectator);
 	}
 	
 	@Override
 	public void unregisterSpectator(Spectator spectator) {
-		// TODO
-		throw new RuntimeException("Implement me");
+		if (spectator == null) throw new NullPointerException("Spectator is null.");
+		if (!spectators.remove(spectator)) throw new IllegalArgumentException("Spectator doesn't exist.");
 	}
 	
 	@Override
 	public void startRotate() {
 		if (isGameOver()) throw new IllegalStateException("Game is already over.");
-		currentPlayer = mrX.colour;
-		final Set<Move> moves = GetMoves(mrX.colour, mrXLocation, mrX.tickets, true);
-		mrX.player.makeMove(this, mrX.location, moves, (Move move) -> {
-			mrXLocation = DoMove(mrXLocation, moves, move, mrXTickets);
+		final Set<Move> moves = GetMoves(mrX.colour, mrXLocation, mrXTickets, true);
+		mrX.player.makeMove(this, mrXLocation, moves, (Move move) -> {
+			if (move == null) throw new NullPointerException("Move is null.");
+			if (!moves.contains(move)) throw new IllegalArgumentException("Not valid move.");
+			callbackVisit.doCallback(move, (DoubleMove doubleMove) -> {MrXDoDoubleMove(doubleMove);},
+										   (PassMove passMove)     -> {MrXDoPassMove(passMove);},
+										   (TicketMove ticketMove) -> {MrXDoTicketMove(ticketMove);});
 		});
-		currentRound++;
-		roundHasNotYetFinishedYouStreakOfPiss = true;
-		currentPlayer = firstDetective.colour;
-		final Set<Move> moreMoves = GetMoves(firstDetective.colour, firstDetectiveLocation, firstDetective.tickets, false);
-		firstDetective.player.makeMove(this, firstDetective.location, moreMoves, (Move move) -> {
-			firstDetectiveLocation = DoMove(firstDetectiveLocation, moreMoves, move, firstDetectiveTickets);
-		});
-		for (int i = 0; i < restOfTheDetectives.length; i++) {
-			final Integer iPrime = i;
-			PlayerConfiguration detective = restOfTheDetectives[i];
-			currentPlayer = detective.colour;
-			final Set<Move> evenMoreMoves = GetMoves(detective.colour, restOfTheDetectivesLocations[i], detective.tickets, false);
-			detective.player.makeMove(this, restOfTheDetectivesLocations[i], evenMoreMoves, (Move move) -> {
-				restOfTheDetectivesLocations[iPrime] = DoMove(restOfTheDetectivesLocations[iPrime], evenMoreMoves, move, restOfTheDetectivesTickets.get(iPrime));
-			});
-		}
-		roundHasNotYetFinishedYouStreakOfPiss = false;
 	}
 	
+	private void MrXDoDoubleMove(DoubleMove doubleMove) {
+		RemoveTicket(mrXTickets, Ticket.DOUBLE);
+		mrXLocation = doubleMove.finalDestination();
+		currentPlayer = firstDetective.colour;
+		doubleMove = HideMrXDestDouble(doubleMove, currentRound, mrXLastLocation);
+		SpectatorMoveMade(doubleMove);
+		if (rounds.get(currentRound)) mrXLastLocation = doubleMove.firstMove().destination();
+		currentRound++;
+		RemoveTicket(mrXTickets, doubleMove.firstMove().ticket());
+		SpectatorRoundStarted(currentRound);
+		SpectatorMoveMade(doubleMove.firstMove());
+		if (rounds.get(currentRound)) mrXLastLocation = doubleMove.secondMove().destination();
+		currentRound++;
+		RemoveTicket(mrXTickets, doubleMove.secondMove().ticket());
+		SpectatorRoundStarted(currentRound);
+		SpectatorMoveMade(doubleMove.secondMove());
+		
+		if (isGameOver()) SpectatorGameOver(winningPlayers);
+		else FirstDetectiveMove();
+	}
+	
+	private TicketMove HideMrXDest(TicketMove ticketMove, Integer round, Integer lastDest) {
+		if (rounds.get(round)) return ticketMove;
+		else return new TicketMove(ticketMove.colour(), ticketMove.ticket(), lastDest);
+	}
+	
+	private DoubleMove HideMrXDestDouble(DoubleMove doubleMove, Integer round, Integer lastDest) {
+		TicketMove firstMove = HideMrXDest(doubleMove.firstMove(), round, lastDest);
+		lastDest = firstMove.destination();
+		TicketMove secondMove = HideMrXDest(doubleMove.secondMove(), round + 1, lastDest);
+		return new DoubleMove(doubleMove.colour(), firstMove, secondMove);
+	}
+	
+	private void MrXDoPassMove(PassMove passMove) {
+		currentRound++;
+		currentPlayer = firstDetective.colour;
+		SpectatorRoundStarted(currentRound);
+		SpectatorMoveMade(passMove);
+		
+		if (isGameOver()) SpectatorGameOver(winningPlayers);
+		else FirstDetectiveMove();
+	}
+	
+	private void MrXDoTicketMove(TicketMove ticketMove) {
+		RemoveTicket(mrXTickets, ticketMove.ticket());
+		mrXLocation = ticketMove.destination();
+		ticketMove = HideMrXDest(ticketMove, currentRound, mrXLastLocation);
+		currentRound++;
+		if (rounds.get(currentRound - 1)) mrXLastLocation = mrXLocation;
+		currentPlayer = firstDetective.colour;
+		SpectatorRoundStarted(currentRound);
+		SpectatorMoveMade(ticketMove);
+		
+		if (isGameOver()) SpectatorGameOver(winningPlayers);
+		else FirstDetectiveMove();
+	}
+	
+	private void FirstDetectiveMove() {
+		final Set<Move> moves = GetMoves(firstDetective.colour, firstDetectiveLocation, firstDetectiveTickets, false);
+		firstDetective.player.makeMove(this, firstDetectiveLocation, moves, (Move move) -> {
+			if (move == null) throw new NullPointerException("Move is null.");
+			if (!moves.contains(move)) throw new IllegalArgumentException("Not valid move.");
+			callbackVisit.doCallback(move, (DoubleMove doubleMove) -> {},
+										   (PassMove passMove)     -> {FirstDetectiveDoPassMove(passMove);},
+										   (TicketMove ticketMove) -> {FirstDetectiveDoTicketMove(ticketMove);});
+		});
+	}
+	
+	private void FirstDetectiveDoPassMove(PassMove passMove) {
+		if (restOfTheDetectives.length == 0) {
+			currentPlayer = mrX.colour;
+			if (currentRound == rounds.size()) MrXWins();
+			SpectatorMoveMade(passMove);
+			if (isGameOver()) SpectatorGameOver(winningPlayers);
+			else SpectatorRotationComplete();
+		}
+		else {
+			currentPlayer = restOfTheDetectives[0].colour;
+			SpectatorMoveMade(passMove);
+			if (isGameOver()) SpectatorGameOver(winningPlayers);
+			else RestOfTheDetectivesMove(0);
+		}
+	}
+	
+	private void FirstDetectiveDoTicketMove(TicketMove ticketMove) {
+		RemoveTicket(firstDetectiveTickets, ticketMove.ticket());
+		GiveMrXTicket(ticketMove.ticket());
+		firstDetectiveLocation = ticketMove.destination();
+		if (restOfTheDetectives.length == 0) {
+			currentPlayer = mrX.colour;
+			if (firstDetectiveLocation == mrXLocation) DetectivesWin();
+			else if (AllDetectivesStuck()) MrXWins();
+			else if (currentRound == rounds.size()) MrXWins();
+			else if (MrXStuck()) DetectivesWin();
+			SpectatorMoveMade(ticketMove);
+			if (isGameOver()) SpectatorGameOver(winningPlayers);
+			else SpectatorRotationComplete();
+		}
+		else {
+			currentPlayer = restOfTheDetectives[0].colour;
+			if (firstDetectiveLocation == mrXLocation) DetectivesWin();
+			else if (AllDetectivesStuck()) MrXWins();
+			SpectatorMoveMade(ticketMove);
+			if (isGameOver()) SpectatorGameOver(winningPlayers);
+			else RestOfTheDetectivesMove(0);
+		}
+	}
+	
+	private void RestOfTheDetectivesMove(Integer i) {
+		final Set<Move> moves = GetMoves(restOfTheDetectives[i].colour, restOfTheDetectivesLocations[i], restOfTheDetectivesTickets.get(i), false);
+		restOfTheDetectives[i].player.makeMove(this, restOfTheDetectivesLocations[i], moves, (Move move) -> {
+			if (move == null) throw new NullPointerException("Move is null.");
+			if (!moves.contains(move)) throw new IllegalArgumentException("Not valid move.");
+			callbackVisit.doCallback(move, (DoubleMove doubleMove) -> {},
+										   (PassMove passMove)     -> {RestOfTheDetectivesDoPassMove(passMove, i);},
+										   (TicketMove ticketMove) -> {RestOfTheDetectivesDoTicketMove(ticketMove, i);});
+		});	
+	}
+	
+	private void RestOfTheDetectivesDoPassMove(PassMove passMove, Integer i) {
+		if (restOfTheDetectives.length == i + 1) {
+			currentPlayer = mrX.colour;
+			if (currentRound == rounds.size()) MrXWins();
+			SpectatorMoveMade(passMove);
+			if (isGameOver()) SpectatorGameOver(winningPlayers);
+			else SpectatorRotationComplete();
+		}
+		else {
+			currentPlayer = restOfTheDetectives[i + 1].colour;
+			SpectatorMoveMade(passMove);
+			if (isGameOver()) SpectatorGameOver(winningPlayers);
+			else RestOfTheDetectivesMove(i + 1);
+		}
+	}
+	
+	private void RestOfTheDetectivesDoTicketMove(TicketMove ticketMove, Integer i) {
+		RemoveTicket(restOfTheDetectivesTickets.get(i), ticketMove.ticket());
+		GiveMrXTicket(ticketMove.ticket());
+		restOfTheDetectivesLocations[i] = ticketMove.destination();
+		if (restOfTheDetectives.length == i + 1) {
+			currentPlayer = mrX.colour;
+			if (restOfTheDetectivesLocations[i] == mrXLocation) DetectivesWin();
+			else if (AllDetectivesStuck()) MrXWins();
+			else if (currentRound == rounds.size()) MrXWins();
+			else if (MrXStuck()) DetectivesWin();
+			SpectatorMoveMade(ticketMove);
+			if (isGameOver()) SpectatorGameOver(winningPlayers);
+			else SpectatorRotationComplete();
+		}
+		else {
+			currentPlayer = restOfTheDetectives[i + 1].colour;
+			if (restOfTheDetectivesLocations[i] == mrXLocation) DetectivesWin();
+			else if (AllDetectivesStuck()) MrXWins();
+			SpectatorMoveMade(ticketMove);
+			if (isGameOver()) SpectatorGameOver(winningPlayers);
+			else RestOfTheDetectivesMove(i + 1);
+		}
+	}
+
+	private void FinalRoundComplete() {
+		winningPlayers.add(mrX.colour);
+		SpectatorGameOver(winningPlayers);
+	}
+
+	private void MrXCaught() {
+		winningPlayers.add(firstDetective.colour);
+		for (PlayerConfiguration detective : restOfTheDetectives) winningPlayers.add(detective.colour);
+		SpectatorGameOver(winningPlayers);
+	}
+	
+	private void DetectivesCannotMove() {
+		winningPlayers.add(mrX.colour);
+		SpectatorGameOver(winningPlayers);
+	}
+	
+	private void MrXCannotMove() {
+		winningPlayers.add(firstDetective.colour);
+		for (PlayerConfiguration detective : restOfTheDetectives) winningPlayers.add(detective.colour);
+		SpectatorGameOver(winningPlayers);
+	}
+	
+	private void DetectivesWin() {
+		winningPlayers.add(firstDetective.colour);
+		for (PlayerConfiguration detective : restOfTheDetectives) winningPlayers.add(detective.colour);
+	}
+	
+	private void MrXWins() {
+		winningPlayers.add(mrX.colour);
+	}
+	
+	/*@Deprecated
+	public void startRotateOld() {			//REDO FROM START
+		if (isGameOver()) throw new IllegalStateException("Game is already over.");
+		final Set<Move> moves = GetMoves(mrX.colour, mrXLocation, mrXTickets, true);
+		mrX.player.makeMove(this, mrXLocation, moves, (Move move) -> {
+			mrXLocation = DoMove(mrXLocation, moves, move, mrXTickets, true);
+			if (isGameOver()) SpectatorGameOver(getWinningPlayers());
+			currentPlayer = firstDetective.colour;
+			if (rounds.get(currentRound)) SpectatorMoveMade(move);
+			else {
+				SecretVisit secretVisit = new SecretVisit(move);
+				SpectatorMoveMade(secretVisit.move);
+			}
+			currentRound++;
+			SpectatorRoundStarted(currentRound);
+			DoubleVisit doubleVisit = new DoubleVisit(move);
+			if (doubleVisit.wasDouble) {
+				currentRound++;
+				SpectatorRoundStarted(currentRound);
+			}
+			final Set<Move> moreMoves = GetMoves(firstDetective.colour, firstDetectiveLocation, firstDetectiveTickets, false);
+			firstDetective.player.makeMove(this, firstDetectiveLocation, moreMoves, (Move moreMove) -> {
+				firstDetectiveLocation = DoMove(firstDetectiveLocation, moreMoves, moreMove, firstDetectiveTickets, false);
+				if (restOfTheDetectives.length > 0) currentPlayer = restOfTheDetectives[0].colour;
+				else currentPlayer = mrX.colour;
+				SpectatorMoveMade(moreMove);
+				if (isGameOver()) SpectatorGameOver(getWinningPlayers());
+				for (int i = 0; i < restOfTheDetectives.length; i++) {
+					final Integer iPrime = i;
+					PlayerConfiguration detective = restOfTheDetectives[i];
+					currentPlayer = detective.colour;
+					final Set<Move> evenMoreMoves = GetMoves(detective.colour, restOfTheDetectivesLocations[i], restOfTheDetectivesTickets.get(i), false);
+					detective.player.makeMove(this, restOfTheDetectivesLocations[i], evenMoreMoves, (Move evenMoreMove) -> {
+						restOfTheDetectivesLocations[iPrime] = DoMove(restOfTheDetectivesLocations[iPrime], evenMoreMoves, evenMoreMove, restOfTheDetectivesTickets.get(iPrime), false);
+						if (iPrime == restOfTheDetectives.length - 1) currentPlayer = mrX.colour;
+						else currentPlayer = restOfTheDetectives[iPrime + 1].colour;
+						SpectatorMoveMade(evenMoreMove);
+						if (isGameOver()) SpectatorGameOver(getWinningPlayers());
+					});
+				}
+				SpectatorRotationComplete();
+			});
+		});
+	}*/
+		
 	@Override
 	public Collection<Spectator> getSpectators() {
-		// TODO
-		throw new RuntimeException("Implement me");
+		return Collections.unmodifiableList(spectators);
 	}
 	
 	@Override
@@ -155,11 +392,16 @@ public class ScotlandYardModel implements ScotlandYardGame {
 
 		return Collections.unmodifiableList(players);
 	}
-	
+
 	@Override
 	public Set<Colour> getWinningPlayers() {
+		return Collections.unmodifiableSet(winningPlayers);
+	}
+	
+	/*@Override
+	public Set<Colour> getWinningPlayers() {
 		Set<Colour> winners = new HashSet<Colour>();
-		if (currentRound == rounds.size()) {
+		/*if (currentRound == rounds.size()) {
 			winners.add(mrX.colour);
 		}
 		if (mrXLocation == firstDetectiveLocation || GetMoves(mrX.colour, mrXLocation, mrXTickets, true).contains(new PassMove(mrX.colour))) {
@@ -185,20 +427,20 @@ public class ScotlandYardModel implements ScotlandYardGame {
 		}
 
 		return Collections.unmodifiableSet(winners);
-	}
+	}*/
 	
 	@Override
 	public Optional<Integer> getPlayerLocation(Colour colour) {
 		if (mrX.colour == colour) {
-			if (roundHasNotYetFinishedYouStreakOfPiss) {
-				if (rounds.get(currentRound - 1)) return Optional.of(mrXLocation);
-				else return Optional.of(0);
+			/*if (currentRound == 0) {
+				return Optional.of(mrXLastLocation);
 			}
 			else {
-				if (rounds.get(currentRound)) return Optional.of(mrXLocation);
-				else return Optional.of(0);
+				if (rounds.get(currentRound - 1)) return Optional.of(mrXLocation);
+				else return Optional.of(mrXLastLocation);
 
-			}
+			}*/
+			return Optional.of(mrXLastLocation);
 		}
 		else if (firstDetective.colour == colour) return Optional.of(firstDetectiveLocation);
 		else {
@@ -211,11 +453,11 @@ public class ScotlandYardModel implements ScotlandYardGame {
 	
 	@Override
 	public Optional<Integer> getPlayerTickets(Colour colour, Ticket ticket) {
-		if (mrX.colour == colour) return Optional.of(mrX.tickets.get(ticket));
-		else if (firstDetective.colour == colour) return Optional.of(firstDetective.tickets.get(ticket));
+		if (mrX.colour == colour) return Optional.of(mrXTickets.get(ticket));
+		else if (firstDetective.colour == colour) return Optional.of(firstDetectiveTickets.get(ticket));
 		else {
-			for (PlayerConfiguration detective : restOfTheDetectives) {
-				if (detective.colour == colour) return Optional.of(detective.tickets.get(ticket));
+			for (Integer i = 0; i < restOfTheDetectives.length; i++) {
+				if (restOfTheDetectives[i].colour == colour) return Optional.of(restOfTheDetectivesTickets.get(i).get(ticket));
 			}
 		}
 		return Optional.empty();
@@ -257,7 +499,7 @@ public class ScotlandYardModel implements ScotlandYardGame {
 	private Set<Move> GetMoves(Colour colour, Integer location, Map<Ticket, Integer> tickets, Boolean isMrX) {
 		Set<TicketMove> ticketMoves = GetTicketMoves(colour, location, tickets, isMrX);
 		Set<Move> moves = new HashSet<Move>(ticketMoves);
-		if (tickets.get(Ticket.DOUBLE) > 0) {
+		if (tickets.get(Ticket.DOUBLE) > 0 && currentRound < rounds.size() - 1) {
 			for (TicketMove ticketMove : ticketMoves) {
 				Map<Ticket, Integer> tempTickets = new HashMap<Ticket, Integer>(tickets);
 				tempTickets.put(ticketMove.ticket(), tickets.get(ticketMove.ticket()) - 1);
@@ -278,42 +520,44 @@ public class ScotlandYardModel implements ScotlandYardGame {
 		Collection<Edge<Integer, Transport>> edges = graph.getEdgesFrom(graph.getNode(location));
 		for (Edge<Integer, Transport> edge : edges) {
 			if (tickets.get(Ticket.fromTransport(edge.data())) > 0) {
-				if (!isMrX || !ContainsDetective(edge.destination().value())) {
+				if (!ContainsDetective(edge.destination().value())) {
 					ticketMoves.add(new TicketMove(colour, Ticket.fromTransport(edge.data()), edge.destination().value()));
-					if (Ticket.fromTransport(edge.data()) != Ticket.SECRET) {
-						if (tickets.get(Ticket.SECRET) > 0) {
-							ticketMoves.add(new TicketMove(colour, Ticket.SECRET, edge.destination().value()));
-						}
-					}
+				}
+			}
+			if (Ticket.fromTransport(edge.data()) != Ticket.SECRET && !ContainsDetective(edge.destination().value())) {
+				if (tickets.get(Ticket.SECRET) > 0) {
+					ticketMoves.add(new TicketMove(colour, Ticket.SECRET, edge.destination().value()));
 				}
 			}
 		}
 		return ticketMoves;
 	}
 
-	private Integer DoMove(Integer location, Set<Move> moves, Move move, Map<Ticket, Integer> tickets) {
+	/*private Integer DoMove(Integer location, Set<Move> moves, Move move, Map<Ticket, Integer> tickets, Boolean isMrX) {
 		if (!moves.contains(move)) throw new IllegalArgumentException("Not valid move.");
-		MVisit mVisit = new MVisit(location);
+		MVisit mVisit = new MVisit(location, tickets, isMrX);
 		move.visit(mVisit);
-		mVisit.useTickets(tickets);
 		return mVisit.destination;
-	}
+	}*/
 
-	private class MVisit implements MoveVisitor {
+	/*private class MVisit implements MoveVisitor {
 		public Integer destination;
 
-		private ArrayList<Ticket> usedTickets;
+		private Map<Ticket, Integer> tickets;
+		private Boolean isMrX;
 
-		public MVisit(Integer destination) {
+		public MVisit(Integer destination, Map<Ticket, Integer> tickets, Boolean isMrX) {
 			this.destination = destination;
-			usedTickets = new ArrayList<Ticket>();
+			this.tickets = tickets;
+			this.isMrX = isMrX;
 		}
 
 		@Override
 		public void visit(DoubleMove move) {
 			destination = move.finalDestination();
-			usedTickets.add(move.firstMove().ticket());
-			usedTickets.add(move.secondMove().ticket());
+			UseTicket(Ticket.DOUBLE);
+			UseTicket(move.firstMove().ticket());
+			UseTicket(move.secondMove().ticket());
 		}
 
 		@Override
@@ -324,24 +568,144 @@ public class ScotlandYardModel implements ScotlandYardGame {
 		@Override
 		public void visit(TicketMove move) {
 			destination = move.destination();
-			usedTickets.add(move.ticket());
+			UseTicket(move.ticket());
 		}
 
-		public void useTickets(Map<Ticket, Integer> tickets) {
-			for (Ticket ticket : usedTickets) {
-				tickets.put(ticket, tickets.get(ticket) - 1);
+		private void UseTicket(Ticket ticket) {
+			tickets.put(ticket, tickets.get(ticket) - 1);
+			if (!isMrX) {
+				mrXTickets.put(ticket, mrXTickets.get(ticket) + 1);
 			}
 		}
-	}
+	}*/
 
 	private boolean ContainsDetective(Integer position) {
-		boolean containsDetective = firstDetective.location == position;
+		boolean containsDetective = firstDetectiveLocation == position;
 
-		for (PlayerConfiguration detective : restOfTheDetectives) {
+		for (Integer i = 0; i < restOfTheDetectives.length; i++) {
 			if (containsDetective) break;
-			containsDetective = detective.location == position;
+			containsDetective = restOfTheDetectivesLocations[i] == position;
 		}
 
 		return containsDetective;
+	}
+
+	private void SpectatorGameOver(Set<Colour> winners) {
+		for (Spectator spectator : spectators) {
+			spectator.onGameOver(this, winners);
+		}
+	}
+	
+	private void SpectatorMoveMade(Move move) {
+		for (Spectator spectator : spectators) {
+			spectator.onMoveMade(this, move);
+		}
+	}
+
+	private void SpectatorRotationComplete() {
+		for (Spectator spectator : spectators) {
+			spectator.onRotationComplete(this);
+		}
+	}
+
+	private void SpectatorRoundStarted(Integer round) {
+		for (Spectator spectator : spectators) {
+			spectator.onRoundStarted(this, round);
+		}
+	}
+
+	/*private class SecretVisit implements MoveVisitor {
+		public Move move;
+
+		public SecretVisit(Move move) {
+			move.visit(this);
+		}
+
+		@Override
+		public void visit(DoubleMove doubleMove) {
+			move = new DoubleMove(doubleMove.colour(), doubleMove.firstMove().ticket(), 0, doubleMove.secondMove().ticket(), 0);
+		}
+
+		@Override
+		public void visit(PassMove passMove) {
+			move = new PassMove(passMove.colour());
+		}
+
+		@Override
+		public void visit(TicketMove ticketMove) {
+			move = new TicketMove(ticketMove.colour(), ticketMove.ticket(), 0);
+		}
+	}
+
+	private class DoubleVisit implements MoveVisitor {
+		public Boolean wasDouble;
+
+		public DoubleVisit(Move move) {
+			move.visit(this);
+		}
+
+		@Override
+		public void visit(DoubleMove doubleMove) {
+			wasDouble = true;
+		}
+
+		@Override
+		public void visit(PassMove passMove) {
+			wasDouble = false;
+		}
+
+		@Override
+		public void visit(TicketMove ticketMove) {
+			wasDouble = false;
+		}
+	}*/
+	
+	private class CallbackVisit implements MoveVisitor {
+		private Consumer<DoubleMove> doubleCallback;
+		private Consumer<PassMove> passCallback;
+		private Consumer<TicketMove> ticketCallback;
+
+		@Override
+		public void visit(DoubleMove doubleMove) {
+			doubleCallback.accept(doubleMove);
+		}
+	
+		@Override
+		public void visit(PassMove passMove) {
+			passCallback.accept(passMove);
+		}
+	
+		@Override
+		public void visit(TicketMove ticketMove) {
+			ticketCallback.accept(ticketMove);
+		}
+
+		public void doCallback(Move move, Consumer<DoubleMove> doubleCallback, Consumer<PassMove> passCallback, Consumer<TicketMove> ticketCallback) {
+			this.doubleCallback = doubleCallback;
+			this.passCallback = passCallback;
+			this.ticketCallback = ticketCallback;
+			move.visit(this);
+		}
+	}
+
+	private void RemoveTicket(Map<Ticket, Integer> tickets, Ticket ticket) {
+		tickets.put(ticket, tickets.get(ticket) - 1);
+	}
+
+	private void GiveMrXTicket(Ticket ticket) {
+		mrXTickets.put(ticket, mrXTickets.get(ticket) + 1);
+	}
+
+	private boolean AllDetectivesStuck() {
+		boolean allStuck = GetMoves(firstDetective.colour, firstDetectiveLocation, firstDetectiveTickets, false).contains(new PassMove(firstDetective.colour));
+		for (Integer i = 0; i < restOfTheDetectives.length; i++) {
+			if (!allStuck) return false;
+			allStuck = GetMoves(restOfTheDetectives[i].colour, restOfTheDetectivesLocations[i], restOfTheDetectivesTickets.get(i), false).contains(new PassMove(restOfTheDetectives[i].colour));
+		}
+		return allStuck;
+	}
+
+	private boolean MrXStuck() {
+		return GetMoves(mrX.colour, mrXLocation, mrXTickets, true).contains(new PassMove(mrX.colour));
 	}
 }
