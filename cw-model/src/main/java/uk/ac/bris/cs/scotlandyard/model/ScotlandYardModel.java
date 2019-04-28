@@ -8,8 +8,6 @@ import java.util.Set;
 
 import java.util.Map;
 
-//import com.sun.javafx.UnmodifiableArrayList;
-
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -20,7 +18,6 @@ import uk.ac.bris.cs.gamekit.graph.Graph;
 import uk.ac.bris.cs.gamekit.graph.Edge;
 import uk.ac.bris.cs.gamekit.graph.ImmutableGraph;
 
-// TODO implement all methods and pass all tests
 public class ScotlandYardModel implements ScotlandYardGame {
 
 	private List<Boolean> rounds;
@@ -37,13 +34,13 @@ public class ScotlandYardModel implements ScotlandYardGame {
 
 	private Colour currentPlayer;
 
-	private Integer mrXLocation;
+	private int mrXLocation;
 
-	private Integer mrXLastLocation;
+	private int mrXLastLocation;
 	
-	private Integer firstDetectiveLocation;
+	private int firstDetectiveLocation;
 	
-	private Integer[] restOfTheDetectivesLocations;
+	private int[] restOfTheDetectivesLocations;
 
 	private Map<Ticket, Integer> mrXTickets;
 
@@ -74,7 +71,7 @@ public class ScotlandYardModel implements ScotlandYardGame {
 		mrXTickets = new HashMap<Ticket, Integer>(mrX.tickets);
 		firstDetectiveLocation = firstDetective.location;
 		firstDetectiveTickets = new HashMap<Ticket, Integer>(firstDetective.tickets);
-		restOfTheDetectivesLocations = new Integer[restOfTheDetectives.length];
+		restOfTheDetectivesLocations = new int[restOfTheDetectives.length];
 		restOfTheDetectivesTickets = new ArrayList<HashMap<Ticket, Integer>>();
 		for (Integer i = 0; i < restOfTheDetectives.length; i++) {
 			restOfTheDetectivesLocations[i] = restOfTheDetectives[i].location;
@@ -300,28 +297,6 @@ public class ScotlandYardModel implements ScotlandYardGame {
 			else RestOfTheDetectivesMove(i + 1);
 		}
 	}
-
-	private void FinalRoundComplete() {
-		winningPlayers.add(mrX.colour);
-		SpectatorGameOver(winningPlayers);
-	}
-
-	private void MrXCaught() {
-		winningPlayers.add(firstDetective.colour);
-		for (PlayerConfiguration detective : restOfTheDetectives) winningPlayers.add(detective.colour);
-		SpectatorGameOver(winningPlayers);
-	}
-	
-	private void DetectivesCannotMove() {
-		winningPlayers.add(mrX.colour);
-		SpectatorGameOver(winningPlayers);
-	}
-	
-	private void MrXCannotMove() {
-		winningPlayers.add(firstDetective.colour);
-		for (PlayerConfiguration detective : restOfTheDetectives) winningPlayers.add(detective.colour);
-		SpectatorGameOver(winningPlayers);
-	}
 	
 	private void DetectivesWin() {
 		winningPlayers.add(firstDetective.colour);
@@ -331,51 +306,6 @@ public class ScotlandYardModel implements ScotlandYardGame {
 	private void MrXWins() {
 		winningPlayers.add(mrX.colour);
 	}
-	
-	/*@Deprecated
-	public void startRotateOld() {			//REDO FROM START
-		if (isGameOver()) throw new IllegalStateException("Game is already over.");
-		final Set<Move> moves = GetMoves(mrX.colour, mrXLocation, mrXTickets, true);
-		mrX.player.makeMove(this, mrXLocation, moves, (Move move) -> {
-			mrXLocation = DoMove(mrXLocation, moves, move, mrXTickets, true);
-			if (isGameOver()) SpectatorGameOver(getWinningPlayers());
-			currentPlayer = firstDetective.colour;
-			if (rounds.get(currentRound)) SpectatorMoveMade(move);
-			else {
-				SecretVisit secretVisit = new SecretVisit(move);
-				SpectatorMoveMade(secretVisit.move);
-			}
-			currentRound++;
-			SpectatorRoundStarted(currentRound);
-			DoubleVisit doubleVisit = new DoubleVisit(move);
-			if (doubleVisit.wasDouble) {
-				currentRound++;
-				SpectatorRoundStarted(currentRound);
-			}
-			final Set<Move> moreMoves = GetMoves(firstDetective.colour, firstDetectiveLocation, firstDetectiveTickets, false);
-			firstDetective.player.makeMove(this, firstDetectiveLocation, moreMoves, (Move moreMove) -> {
-				firstDetectiveLocation = DoMove(firstDetectiveLocation, moreMoves, moreMove, firstDetectiveTickets, false);
-				if (restOfTheDetectives.length > 0) currentPlayer = restOfTheDetectives[0].colour;
-				else currentPlayer = mrX.colour;
-				SpectatorMoveMade(moreMove);
-				if (isGameOver()) SpectatorGameOver(getWinningPlayers());
-				for (int i = 0; i < restOfTheDetectives.length; i++) {
-					final Integer iPrime = i;
-					PlayerConfiguration detective = restOfTheDetectives[i];
-					currentPlayer = detective.colour;
-					final Set<Move> evenMoreMoves = GetMoves(detective.colour, restOfTheDetectivesLocations[i], restOfTheDetectivesTickets.get(i), false);
-					detective.player.makeMove(this, restOfTheDetectivesLocations[i], evenMoreMoves, (Move evenMoreMove) -> {
-						restOfTheDetectivesLocations[iPrime] = DoMove(restOfTheDetectivesLocations[iPrime], evenMoreMoves, evenMoreMove, restOfTheDetectivesTickets.get(iPrime), false);
-						if (iPrime == restOfTheDetectives.length - 1) currentPlayer = mrX.colour;
-						else currentPlayer = restOfTheDetectives[iPrime + 1].colour;
-						SpectatorMoveMade(evenMoreMove);
-						if (isGameOver()) SpectatorGameOver(getWinningPlayers());
-					});
-				}
-				SpectatorRotationComplete();
-			});
-		});
-	}*/
 		
 	@Override
 	public Collection<Spectator> getSpectators() {
@@ -398,48 +328,9 @@ public class ScotlandYardModel implements ScotlandYardGame {
 		return Collections.unmodifiableSet(winningPlayers);
 	}
 	
-	/*@Override
-	public Set<Colour> getWinningPlayers() {
-		Set<Colour> winners = new HashSet<Colour>();
-		/*if (currentRound == rounds.size()) {
-			winners.add(mrX.colour);
-		}
-		if (mrXLocation == firstDetectiveLocation || GetMoves(mrX.colour, mrXLocation, mrXTickets, true).contains(new PassMove(mrX.colour))) {
-			winners.add(firstDetective.colour);
-			for (PlayerConfiguration detective : restOfTheDetectives) winners.add(detective.colour);
-		}
-		for (Integer i = 0; i < restOfTheDetectives.length; i++) {
-			if (mrXLocation == restOfTheDetectivesLocations[i]) {
-				winners.add(firstDetective.colour);
-				for (PlayerConfiguration detective : restOfTheDetectives) winners.add(detective.colour);
-			}
-		}
-		
-		boolean allStuck = GetMoves(firstDetective.colour, firstDetectiveLocation , firstDetectiveTickets, false).contains(new PassMove(firstDetective.colour));
-		for (Integer i = 0; i < restOfTheDetectives.length; i++) {
-			if (allStuck == false) break;
-			else {
-				allStuck = GetMoves(restOfTheDetectives[i].colour, restOfTheDetectivesLocations[i], restOfTheDetectivesTickets.get(i), false).contains(new PassMove(restOfTheDetectives[i].colour));
-			}
-		}
-		if (allStuck) {
-			winners.add(mrX.colour);
-		}
-
-		return Collections.unmodifiableSet(winners);
-	}*/
-	
 	@Override
 	public Optional<Integer> getPlayerLocation(Colour colour) {
 		if (mrX.colour == colour) {
-			/*if (currentRound == 0) {
-				return Optional.of(mrXLastLocation);
-			}
-			else {
-				if (rounds.get(currentRound - 1)) return Optional.of(mrXLocation);
-				else return Optional.of(mrXLastLocation);
-
-			}*/
 			return Optional.of(mrXLastLocation);
 		}
 		else if (firstDetective.colour == colour) return Optional.of(firstDetectiveLocation);
@@ -507,7 +398,9 @@ public class ScotlandYardModel implements ScotlandYardGame {
 				Integer tempLocation = ticketMove.destination();
 				Set<TicketMove> secondMoves = GetTicketMoves(colour, tempLocation, tempTickets, isMrX);
 				for (TicketMove secondMove : secondMoves) {
-					moves.add(new DoubleMove(colour, ticketMove, secondMove));
+					if (!ContainsDetective(secondMove.destination())) {
+						moves.add(new DoubleMove(colour, ticketMove, secondMove));
+					}
 				}
 			}
 		}
@@ -524,64 +417,19 @@ public class ScotlandYardModel implements ScotlandYardGame {
 					ticketMoves.add(new TicketMove(colour, Ticket.fromTransport(edge.data()), edge.destination().value()));
 				}
 			}
-			if (Ticket.fromTransport(edge.data()) != Ticket.SECRET && !ContainsDetective(edge.destination().value())) {
+			if (Ticket.fromTransport(edge.data()) != Ticket.SECRET) {
 				if (tickets.get(Ticket.SECRET) > 0) {
-					ticketMoves.add(new TicketMove(colour, Ticket.SECRET, edge.destination().value()));
+					if (!ContainsDetective(edge.destination().value())) {
+						ticketMoves.add(new TicketMove(colour, Ticket.SECRET, edge.destination().value()));
+					}
 				}
 			}
 		}
 		return ticketMoves;
 	}
 
-	/*private Integer DoMove(Integer location, Set<Move> moves, Move move, Map<Ticket, Integer> tickets, Boolean isMrX) {
-		if (!moves.contains(move)) throw new IllegalArgumentException("Not valid move.");
-		MVisit mVisit = new MVisit(location, tickets, isMrX);
-		move.visit(mVisit);
-		return mVisit.destination;
-	}*/
-
-	/*private class MVisit implements MoveVisitor {
-		public Integer destination;
-
-		private Map<Ticket, Integer> tickets;
-		private Boolean isMrX;
-
-		public MVisit(Integer destination, Map<Ticket, Integer> tickets, Boolean isMrX) {
-			this.destination = destination;
-			this.tickets = tickets;
-			this.isMrX = isMrX;
-		}
-
-		@Override
-		public void visit(DoubleMove move) {
-			destination = move.finalDestination();
-			UseTicket(Ticket.DOUBLE);
-			UseTicket(move.firstMove().ticket());
-			UseTicket(move.secondMove().ticket());
-		}
-
-		@Override
-		public void visit(PassMove move) {
-
-		}
-
-		@Override
-		public void visit(TicketMove move) {
-			destination = move.destination();
-			UseTicket(move.ticket());
-		}
-
-		private void UseTicket(Ticket ticket) {
-			tickets.put(ticket, tickets.get(ticket) - 1);
-			if (!isMrX) {
-				mrXTickets.put(ticket, mrXTickets.get(ticket) + 1);
-			}
-		}
-	}*/
-
-	private boolean ContainsDetective(Integer position) {
-		boolean containsDetective = firstDetectiveLocation == position;
-
+	private boolean ContainsDetective(int position) {
+		boolean containsDetective = firstDetectiveLocation == position;	
 		for (Integer i = 0; i < restOfTheDetectives.length; i++) {
 			if (containsDetective) break;
 			containsDetective = restOfTheDetectivesLocations[i] == position;
@@ -613,52 +461,6 @@ public class ScotlandYardModel implements ScotlandYardGame {
 			spectator.onRoundStarted(this, round);
 		}
 	}
-
-	/*private class SecretVisit implements MoveVisitor {
-		public Move move;
-
-		public SecretVisit(Move move) {
-			move.visit(this);
-		}
-
-		@Override
-		public void visit(DoubleMove doubleMove) {
-			move = new DoubleMove(doubleMove.colour(), doubleMove.firstMove().ticket(), 0, doubleMove.secondMove().ticket(), 0);
-		}
-
-		@Override
-		public void visit(PassMove passMove) {
-			move = new PassMove(passMove.colour());
-		}
-
-		@Override
-		public void visit(TicketMove ticketMove) {
-			move = new TicketMove(ticketMove.colour(), ticketMove.ticket(), 0);
-		}
-	}
-
-	private class DoubleVisit implements MoveVisitor {
-		public Boolean wasDouble;
-
-		public DoubleVisit(Move move) {
-			move.visit(this);
-		}
-
-		@Override
-		public void visit(DoubleMove doubleMove) {
-			wasDouble = true;
-		}
-
-		@Override
-		public void visit(PassMove passMove) {
-			wasDouble = false;
-		}
-
-		@Override
-		public void visit(TicketMove ticketMove) {
-			wasDouble = false;
-		}
-	}*/
 	
 	private class CallbackVisit implements MoveVisitor {
 		private Consumer<DoubleMove> doubleCallback;

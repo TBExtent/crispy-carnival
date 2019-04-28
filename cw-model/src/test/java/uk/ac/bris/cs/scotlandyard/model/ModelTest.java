@@ -10,9 +10,9 @@ import org.junit.runners.Suite;
 @Suite.SuiteClasses({
 		ModelCreationTest.class,
 		ModelGameOverTest.class,
-		//ModelSixPlayerPlayOutTestComplex.class,
+		ModelSixPlayerPlayOutTestComplex.class,
 		ModelSixPlayerPlayOutTestSimple.class,
-		//ModelTwoPlayerPlayOutTestSimple.class,
+		ModelTwoPlayerPlayOutTestSimple.class,
 		ModelRoundTest.class,
 		ModelPlayerTest.class,
 		ModelValidMoveTest.class,

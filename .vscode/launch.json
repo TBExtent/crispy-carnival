@@ -2,11 +2,18 @@
     "configurations": [
         {
             "type": "java",
-            "name": "CodeLens (Launch) - Main",
+            "name": "Run model",
             "request": "launch",
             "mainClass": "uk.ac.bris.cs.scotlandyard.Main",
             "projectName": "cw-model",
-            "preLaunchTask": "test"
+            "preLaunchTask": "testModel"
+        },
+        {
+            "type": "java",
+            "name": "Run ai",
+            "request": "launch",
+            "mainClass": "uk.ac.bris.cs.scotlandyard.ui.ai.MyAI",
+            "projectName": "cw-ai"
         }
     ]
 }

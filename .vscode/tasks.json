@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "test",
+            "label": "testModel",
             "group": "test",
             "command": "mvn -f ${workspaceFolder}/cw-model --quiet clean test > ${workspaceFolder}/cw-model/errors.txt",
             "type": "shell",
